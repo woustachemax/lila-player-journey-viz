@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EventName, Journey } from "@/lib/types";
 import { drawMarker } from "@/lib/eventStyles";
-import { MARKER_LAYER_ORDER, buildJourneyMarkers } from "@/lib/markers";
+import { buildJourneyMarkers, findStackedTopMarkers, markerPriorityRank, sortByPriority } from "@/lib/markers";
 import { formatDuration } from "@/lib/format";
 import Tooltip from "./Tooltip";
 
@@ -21,18 +21,29 @@ interface Transform {
   ty: number;
 }
 
-interface HoveredMarker {
-  screenX: number;
-  screenY: number;
+interface HoveredItem {
   label: string;
+  t: number;
   playerId: string;
   kind: "human" | "bot";
   flag: boolean;
-  t: number;
+}
+
+interface HoveredGroup {
+  screenX: number;
+  screenY: number;
+  items: HoveredItem[];
 }
 
 const MIN_SCALE_FACTOR = 0.6;
 const MAX_SCALE_FACTOR = 30;
+const STACK_RING_RADIUS_PX = 5;
+const HOVER_RADIUS_PX = 9;
+
+function groupKey(g: HoveredGroup | null): string {
+  if (!g) return "";
+  return g.items.map((it) => `${it.playerId}:${it.label}:${it.t}`).join("|");
+}
 
 export default function MapCanvas({
   imageSrc,
@@ -50,13 +61,18 @@ export default function MapCanvas({
 
   const [imageReady, setImageReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [hovered, setHovered] = useState<HoveredMarker | null>(null);
+  const [hovered, setHovered] = useState<HoveredGroup | null>(null);
   const [prevJourneys, setPrevJourneys] = useState(journeys);
 
   if (journeys !== prevJourneys) {
     setPrevJourneys(journeys);
     setHovered(null);
   }
+
+  const sortedMarkers = useMemo(() => {
+    const all = journeys.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
+    return sortByPriority(all);
+  }, [journeys, eventNames, imageWidth, imageHeight]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -105,16 +121,21 @@ export default function MapCanvas({
     bots.forEach((j) => drawPath(j, "rgba(148,163,184,0.55)", 1.4, [5, 4]));
     humans.forEach((j) => drawPath(j, "rgba(37,99,235,0.9)", 2, []));
 
-    const allMarkers = humans.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
-    MARKER_LAYER_ORDER.forEach((layer) => {
-      allMarkers
-        .filter((m) => m.layer === layer)
-        .forEach((m) => {
-          ctx.globalAlpha = m.alpha;
-          drawMarker(ctx, m.x, m.y, m.shape, m.color, m.size / scale);
-        });
+    sortedMarkers.forEach((m) => {
+      ctx.globalAlpha = m.alpha;
+      drawMarker(ctx, m.x, m.y, m.shape, m.color, m.size / scale);
     });
     ctx.globalAlpha = 1;
+
+    const stackTops = findStackedTopMarkers(sortedMarkers, STACK_RING_RADIUS_PX / scale);
+    stackTops.forEach((idx) => {
+      const m = sortedMarkers[idx];
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, (m.size / scale) * 1.7, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 1.6 / scale;
+      ctx.stroke();
+    });
 
     ctx.restore();
 
@@ -125,7 +146,7 @@ export default function MapCanvas({
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-  }, [imageWidth, imageHeight, journeys, eventNames, hovered]);
+  }, [imageWidth, imageHeight, journeys, sortedMarkers, hovered]);
 
   const fitToContainer = useCallback(() => {
     const container = containerRef.current;
@@ -174,36 +195,38 @@ export default function MapCanvas({
     return () => observer.disconnect();
   }, [draw]);
 
-  const findHoveredMarker = useCallback(
-    (mouseX: number, mouseY: number): HoveredMarker | null => {
+  const findHoveredMarkers = useCallback(
+    (mouseX: number, mouseY: number): HoveredGroup | null => {
       const { scale, tx, ty } = transformRef.current;
-      const threshold = 9;
-      let best: HoveredMarker | null = null;
-      let bestDist = threshold;
-      const humans = journeys.filter((j) => j.kind === "human");
-      const allMarkers = humans.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
-      for (const m of allMarkers) {
+      const within: { label: string; t: number; playerId: string; kind: "human" | "bot"; flag: boolean; sx: number; sy: number; dist: number; rank: number }[] = [];
+      for (const m of sortedMarkers) {
         const sx = tx + m.x * scale;
         const sy = ty + m.y * scale;
-        const dx = sx - mouseX;
-        const dy = sy - mouseY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = {
-            screenX: sx,
-            screenY: sy,
+        const dist = Math.hypot(sx - mouseX, sy - mouseY);
+        if (dist < HOVER_RADIUS_PX) {
+          within.push({
             label: m.label,
+            t: m.t,
             playerId: m.playerId,
             kind: m.kind,
             flag: m.flag,
-            t: m.t,
-          };
+            sx,
+            sy,
+            dist,
+            rank: markerPriorityRank(m.markerKind),
+          });
         }
       }
-      return best;
+      if (within.length === 0) return null;
+      within.sort((a, b) => b.rank - a.rank);
+      const anchor = within.reduce((best, cur) => (cur.dist < best.dist ? cur : best));
+      return {
+        screenX: anchor.sx,
+        screenY: anchor.sy,
+        items: within.map(({ label, t, playerId, kind, flag }) => ({ label, t, playerId, kind, flag })),
+      };
     },
-    [journeys, eventNames, imageWidth, imageHeight],
+    [sortedMarkers],
   );
 
   const onWheel = useCallback(
@@ -262,12 +285,8 @@ export default function MapCanvas({
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const found = findHoveredMarker(mouseX, mouseY);
-    const changed =
-      found?.playerId !== hovered?.playerId ||
-      found?.t !== hovered?.t ||
-      found?.label !== hovered?.label;
-    if (changed) {
+    const found = findHoveredMarkers(mouseX, mouseY);
+    if (groupKey(found) !== groupKey(hovered)) {
       setHovered(found);
     }
   };
@@ -296,11 +315,13 @@ export default function MapCanvas({
         <Tooltip
           x={hovered.screenX}
           y={hovered.screenY}
-          eventLabel={hovered.label}
-          playerId={hovered.playerId}
-          kind={hovered.kind}
-          flag={hovered.flag}
-          time={formatDuration(hovered.t)}
+          items={hovered.items.map((it) => ({
+            label: it.label,
+            time: formatDuration(it.t),
+            playerId: it.playerId,
+            kind: it.kind,
+            flag: it.flag,
+          }))}
         />
       )}
     </div>
