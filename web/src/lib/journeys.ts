@@ -1,8 +1,11 @@
 import { EventName, Journey, JourneyPoint, MapData } from "./types";
 
 export interface MatchSummary {
-  kills: number;
-  deaths: number;
+  playerKills: number;
+  botKills: number;
+  killedByPlayer: number;
+  killedByBot: number;
+  stormDeaths: number;
   loot: number;
 }
 
@@ -48,13 +51,23 @@ export function buildMatchSummaries(
 ): Map<number, MatchSummary> {
   const summaries = new Map<number, MatchSummary>();
   journeysByMatch.forEach((journeys, matchIndex) => {
-    const summary: MatchSummary = { kills: 0, deaths: 0, loot: 0 };
+    const summary: MatchSummary = {
+      playerKills: 0,
+      botKills: 0,
+      killedByPlayer: 0,
+      killedByBot: 0,
+      stormDeaths: 0,
+      loot: 0,
+    };
     journeys.forEach((journey) => {
       if (journey.kind !== "human") return;
       journey.points.forEach((pt) => {
         const name = eventNames[pt.e];
-        if (name === "Kill" || name === "BotKill") summary.kills++;
-        else if (name === "Killed" || name === "BotKilled" || name === "KilledByStorm") summary.deaths++;
+        if (name === "Kill") summary.playerKills++;
+        else if (name === "BotKill") summary.botKills++;
+        else if (name === "Killed") summary.killedByPlayer++;
+        else if (name === "BotKilled") summary.killedByBot++;
+        else if (name === "KilledByStorm") summary.stormDeaths++;
         else if (name === "Loot") summary.loot++;
       });
     });

@@ -2,6 +2,7 @@ import { MapMeta, MatchMeta } from "@/lib/types";
 import { MatchSummary } from "@/lib/journeys";
 import MapSelector from "./MapSelector";
 import MatchList from "./MatchList";
+import Legend from "./Legend";
 
 interface SidebarProps {
   maps: MapMeta[];
@@ -31,6 +32,7 @@ export default function Sidebar({
         selectedIndex={selectedMatchIndex}
         onSelect={onSelectMatch}
       />
+      <Legend />
     </aside>
   );
 }

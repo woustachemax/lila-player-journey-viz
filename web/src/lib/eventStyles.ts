@@ -1,6 +1,14 @@
 import { EventName } from "./types";
 
-export type MarkerShape = "circle" | "triangleUp" | "triangleDown" | "diamond" | "star" | "cross";
+export type MarkerShape =
+  | "circle"
+  | "triangleUp"
+  | "triangleDown"
+  | "diamond"
+  | "star"
+  | "cross"
+  | "hollowCircle"
+  | "square";
 
 export interface EventStyle {
   label: string;
@@ -94,6 +102,24 @@ export function drawMarker(
       ctx.fillRect(-size, -w / 2, size * 2, w);
       ctx.fillRect(-w / 2, -size, w, size * 2);
       ctx.restore();
+      break;
+    }
+    case "hollowCircle": {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(15,23,42,0.55)";
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.4, size * 0.3);
+      ctx.stroke();
+      break;
+    }
+    case "square": {
+      const half = size * 0.85;
+      ctx.beginPath();
+      ctx.rect(x - half, y - half, half * 2, half * 2);
+      ctx.fill();
+      ctx.stroke();
       break;
     }
   }

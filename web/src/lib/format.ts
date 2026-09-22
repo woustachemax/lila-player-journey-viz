@@ -6,6 +6,12 @@ export function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+export function formatDurationLong(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
 export function formatDate(date: string): string {
   const [, month, day] = date.split("-");
   const months = [
@@ -16,10 +22,13 @@ export function formatDate(date: string): string {
 }
 
 export function formatMatchSummary(summary: MatchSummary): string {
-  const { kills, deaths, loot } = summary;
+  const { playerKills, botKills, killedByPlayer, killedByBot, stormDeaths, loot } = summary;
   const parts: string[] = [];
-  if (kills > 0) parts.push(`${kills} kill${kills === 1 ? "" : "s"}`);
-  if (deaths > 0) parts.push(`${deaths} death${deaths === 1 ? "" : "s"}`);
+  if (playerKills > 0) parts.push(`${playerKills} player kill${playerKills === 1 ? "" : "s"}`);
+  if (botKills > 0) parts.push(`${botKills} bot kill${botKills === 1 ? "" : "s"}`);
+  if (killedByPlayer > 0) parts.push(`${killedByPlayer} killed by player`);
+  if (killedByBot > 0) parts.push(`${killedByBot} killed by bot`);
+  if (stormDeaths > 0) parts.push(`${stormDeaths} storm death${stormDeaths === 1 ? "" : "s"}`);
   if (loot > 0) parts.push(`${loot} loot`);
   return parts.length > 0 ? parts.join(" · ") : "no notable events";
 }

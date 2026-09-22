@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EventName, Journey } from "@/lib/types";
-import { EVENT_STYLES, drawMarker } from "@/lib/eventStyles";
+import { drawMarker } from "@/lib/eventStyles";
+import { MARKER_LAYER_ORDER, buildJourneyMarkers } from "@/lib/markers";
 import { formatDuration } from "@/lib/format";
 import Tooltip from "./Tooltip";
 
@@ -23,7 +24,7 @@ interface Transform {
 interface HoveredMarker {
   screenX: number;
   screenY: number;
-  eventName: EventName;
+  label: string;
   playerId: string;
   kind: "human" | "bot";
   flag: boolean;
@@ -104,17 +105,16 @@ export default function MapCanvas({
     bots.forEach((j) => drawPath(j, "rgba(148,163,184,0.55)", 1.4, [5, 4]));
     humans.forEach((j) => drawPath(j, "rgba(37,99,235,0.9)", 2, []));
 
-    const markerSize = 6 / scale;
-    humans.forEach((journey) => {
-      journey.points.forEach((pt) => {
-        const name = eventNames[pt.e];
-        const style = EVENT_STYLES[name];
-        if (!style) return;
-        const x = pt.u * imageWidth;
-        const y = (1 - pt.v) * imageHeight;
-        drawMarker(ctx, x, y, style.shape, style.color, markerSize);
-      });
+    const allMarkers = humans.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
+    MARKER_LAYER_ORDER.forEach((layer) => {
+      allMarkers
+        .filter((m) => m.layer === layer)
+        .forEach((m) => {
+          ctx.globalAlpha = m.alpha;
+          drawMarker(ctx, m.x, m.y, m.shape, m.color, m.size / scale);
+        });
     });
+    ctx.globalAlpha = 1;
 
     ctx.restore();
 
@@ -180,28 +180,25 @@ export default function MapCanvas({
       const threshold = 9;
       let best: HoveredMarker | null = null;
       let bestDist = threshold;
-      for (const journey of journeys) {
-        if (journey.kind !== "human") continue;
-        for (const pt of journey.points) {
-          const name = eventNames[pt.e];
-          if (!EVENT_STYLES[name]) continue;
-          const sx = tx + pt.u * imageWidth * scale;
-          const sy = ty + (1 - pt.v) * imageHeight * scale;
-          const dx = sx - mouseX;
-          const dy = sy - mouseY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = {
-              screenX: sx,
-              screenY: sy,
-              eventName: name,
-              playerId: journey.playerId,
-              kind: journey.kind,
-              flag: journey.flag,
-              t: pt.t,
-            };
-          }
+      const humans = journeys.filter((j) => j.kind === "human");
+      const allMarkers = humans.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
+      for (const m of allMarkers) {
+        const sx = tx + m.x * scale;
+        const sy = ty + m.y * scale;
+        const dx = sx - mouseX;
+        const dy = sy - mouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = {
+            screenX: sx,
+            screenY: sy,
+            label: m.label,
+            playerId: m.playerId,
+            kind: m.kind,
+            flag: m.flag,
+            t: m.t,
+          };
         }
       }
       return best;
@@ -269,7 +266,7 @@ export default function MapCanvas({
     const changed =
       found?.playerId !== hovered?.playerId ||
       found?.t !== hovered?.t ||
-      found?.eventName !== hovered?.eventName;
+      found?.label !== hovered?.label;
     if (changed) {
       setHovered(found);
     }
@@ -299,7 +296,7 @@ export default function MapCanvas({
         <Tooltip
           x={hovered.screenX}
           y={hovered.screenY}
-          eventLabel={EVENT_STYLES[hovered.eventName]?.label ?? hovered.eventName}
+          eventLabel={hovered.label}
           playerId={hovered.playerId}
           kind={hovered.kind}
           flag={hovered.flag}

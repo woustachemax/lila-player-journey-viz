@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MatchMeta } from "@/lib/types";
 import { MatchSummary } from "@/lib/journeys";
-import { formatDate, formatDuration, formatMatchSummary } from "@/lib/format";
+import { formatDate, formatDurationLong, formatMatchSummary } from "@/lib/format";
 
 interface MatchListProps {
   matches: MatchMeta[];
@@ -10,35 +10,72 @@ interface MatchListProps {
   onSelect: (index: number) => void;
 }
 
+type SortMode = "newest" | "mostEvents" | "mostBots";
+
+function totalEvents(summary: MatchSummary | undefined): number {
+  if (!summary) return 0;
+  return (
+    summary.playerKills +
+    summary.botKills +
+    summary.killedByPlayer +
+    summary.killedByBot +
+    summary.stormDeaths +
+    summary.loot
+  );
+}
+
 export default function MatchList({ matches, summaries, selectedIndex, onSelect }: MatchListProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
+
+  const orderedIndices = useMemo(() => {
+    const indices = matches.map((_, i) => i);
+    if (sortMode === "newest") {
+      indices.sort((a, b) => matches[b].start - matches[a].start);
+    } else if (sortMode === "mostEvents") {
+      indices.sort((a, b) => totalEvents(summaries.get(b)) - totalEvents(summaries.get(a)));
+    } else if (sortMode === "mostBots") {
+      indices.sort((a, b) => matches[b].bots - matches[a].bots);
+    }
+    return indices;
+  }, [matches, summaries, sortMode]);
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "center" });
-  }, [matches, selectedIndex]);
+  }, [orderedIndices, selectedIndex]);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 px-1 mb-1">
-        Matches
-      </span>
-      {matches.map((match, index) => {
+      <div className="flex items-center justify-between px-1 mb-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Matches</span>
+        <select
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as SortMode)}
+          className="text-xs bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300"
+        >
+          <option value="newest">Newest</option>
+          <option value="mostEvents">Most events</option>
+          <option value="mostBots">Most bots</option>
+        </select>
+      </div>
+      {orderedIndices.map((index) => {
+        const match = matches[index];
         const active = index === selectedIndex;
         return (
           <button
             key={match.id}
             ref={active ? selectedRef : undefined}
             onClick={() => onSelect(index)}
-            className={`flex flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors ${
+            className={`flex flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors border ${
               active
-                ? "bg-blue-600 text-white"
-                : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                ? "bg-blue-600 text-white border-blue-300 ring-2 ring-blue-400"
+                : "bg-zinc-900 text-zinc-300 border-transparent hover:bg-zinc-800"
             }`}
           >
             <div className="flex items-center justify-between text-sm font-medium">
               <span>{formatDate(match.date)}</span>
               <span className={active ? "text-blue-100" : "text-zinc-500"}>
-                {formatDuration(match.duration)}
+                {formatDurationLong(match.duration)}
               </span>
             </div>
             <div className={`text-xs ${active ? "text-blue-100" : "text-zinc-500"}`}>
@@ -46,7 +83,16 @@ export default function MatchList({ matches, summaries, selectedIndex, onSelect 
               {match.bots === 1 ? "" : "s"}
             </div>
             <div className={`text-xs ${active ? "text-blue-50" : "text-zinc-400"}`}>
-              {formatMatchSummary(summaries.get(index) ?? { kills: 0, deaths: 0, loot: 0 })}
+              {formatMatchSummary(
+                summaries.get(index) ?? {
+                  playerKills: 0,
+                  botKills: 0,
+                  killedByPlayer: 0,
+                  killedByBot: 0,
+                  stormDeaths: 0,
+                  loot: 0,
+                },
+              )}
             </div>
           </button>
         );

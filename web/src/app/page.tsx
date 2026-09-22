@@ -6,7 +6,6 @@ import { loadIndex, loadMapData } from "@/lib/loadData";
 import { buildJourneysByMatch, buildMatchSummaries, pickDefaultMatch } from "@/lib/journeys";
 import Sidebar from "@/components/Sidebar";
 import MapCanvas from "@/components/MapCanvas";
-import Legend from "@/components/Legend";
 
 export default function Home() {
   const [index, setIndex] = useState<IndexData | null>(null);
@@ -103,7 +102,6 @@ export default function Home() {
             journeys={currentJourneys}
             eventNames={index.events}
           />
-          <Legend />
         </main>
       </div>
     </div>

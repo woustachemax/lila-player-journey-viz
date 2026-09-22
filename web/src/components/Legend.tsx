@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { EVENT_STYLES, drawMarker } from "@/lib/eventStyles";
+import { useEffect, useRef, useState } from "react";
+import { EVENT_STYLES, MarkerShape, drawMarker } from "@/lib/eventStyles";
+import { EXTRACTED_MARKER_STYLE, START_MARKER_STYLE } from "@/lib/markers";
 
-function MarkerSwatch({ shape, color }: { shape: "circle" | "triangleUp" | "triangleDown" | "diamond" | "star" | "cross"; color: string }) {
+function MarkerSwatch({ shape, color }: { shape: MarkerShape; color: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -48,31 +49,50 @@ function LineSwatch({ dashed }: { dashed: boolean }) {
 }
 
 export default function Legend() {
+  const [open, setOpen] = useState(true);
   const markerEntries = Object.entries(EVENT_STYLES) as [string, (typeof EVENT_STYLES)[keyof typeof EVENT_STYLES]][];
 
   return (
-    <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-zinc-900/90 border border-zinc-700 px-4 py-3 text-xs text-zinc-200 shadow-lg max-w-xs">
-      <div className="font-medium mb-2 text-zinc-100">Legend</div>
-      <div className="flex flex-col gap-1.5 mb-3">
-        <div className="flex items-center gap-2">
-          <LineSwatch dashed={false} />
-          <span>Human path</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <LineSwatch dashed={true} />
-          <span>Bot path</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-        {markerEntries.map(([name, style]) =>
-          style ? (
-            <div key={name} className="flex items-center gap-2">
-              <MarkerSwatch shape={style.shape} color={style.color} />
-              <span>{style.label}</span>
+    <div className="shrink-0 border-t border-zinc-800">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-300"
+      >
+        <span>Legend</span>
+        <span>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 text-xs text-zinc-200">
+          <div className="flex flex-col gap-1.5 mb-3">
+            <div className="flex items-center gap-2">
+              <LineSwatch dashed={false} />
+              <span>Human path</span>
             </div>
-          ) : null,
-        )}
-      </div>
+            <div className="flex items-center gap-2">
+              <LineSwatch dashed={true} />
+              <span>Bot path</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MarkerSwatch shape={START_MARKER_STYLE.shape} color={START_MARKER_STYLE.color} />
+              <span>{START_MARKER_STYLE.label}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MarkerSwatch shape={EXTRACTED_MARKER_STYLE.shape} color={EXTRACTED_MARKER_STYLE.color} />
+              <span>{EXTRACTED_MARKER_STYLE.label}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {markerEntries.map(([name, style]) =>
+              style ? (
+                <div key={name} className="flex items-center gap-2">
+                  <MarkerSwatch shape={style.shape} color={style.color} />
+                  <span>{style.label}</span>
+                </div>
+              ) : null,
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
