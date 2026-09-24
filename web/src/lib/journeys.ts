@@ -76,10 +76,11 @@ export function buildMatchSummaries(
   return summaries;
 }
 
-export function pickDefaultMatch(matches: MapData["matches"]): number {
-  let bestIndex = 0;
+export function pickDefaultMatch(matches: MapData["matches"], date: string | null = null): number | null {
+  let bestIndex: number | null = null;
   let bestScore = -1;
   matches.forEach((match, index) => {
+    if (date !== null && match.date !== date) return;
     const score = Object.values(match.events).reduce((sum, count) => sum + (count ?? 0), 0);
     if (score > bestScore) {
       bestScore = score;
