@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EventName, Journey } from "@/lib/types";
 import { drawMarker } from "@/lib/eventStyles";
-import { buildJourneyMarkers, findStackedTopMarkers, markerPriorityRank, sortByPriority } from "@/lib/markers";
+import { MarkerInfo, findStackedTopMarkers, markerPriorityRank } from "@/lib/markers";
+import { PlaybackClock } from "@/lib/playbackClock";
+import { Track, drawPlayerDot, hasStarted, positionAt, tracePath } from "@/lib/playback";
 import { formatDuration } from "@/lib/format";
 import Tooltip from "./Tooltip";
 
@@ -11,8 +12,9 @@ interface MapCanvasProps {
   imageSrc: string;
   imageWidth: number;
   imageHeight: number;
-  journeys: Journey[];
-  eventNames: EventName[];
+  tracks: Track[];
+  markers: MarkerInfo[];
+  clock: PlaybackClock;
 }
 
 interface Transform {
@@ -35,101 +37,146 @@ interface HoveredGroup {
   items: HoveredItem[];
 }
 
+interface StackCache {
+  markers: MarkerInfo[];
+  scale: number;
+  count: number;
+  tops: Set<number>;
+}
+
 const MIN_SCALE_FACTOR = 0.6;
 const MAX_SCALE_FACTOR = 30;
 const STACK_RING_RADIUS_PX = 5;
 const HOVER_RADIUS_PX = 9;
+const DOT_SIZE_PX = 5.5;
 
 function groupKey(g: HoveredGroup | null): string {
   if (!g) return "";
   return g.items.map((it) => `${it.playerId}:${it.label}:${it.t}`).join("|");
 }
 
+function prepareCanvas(canvas: HTMLCanvasElement | null) {
+  if (!canvas) return null;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  const targetW = Math.round(cssW * dpr);
+  const targetH = Math.round(cssH * dpr);
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  return { ctx, cssW, cssH };
+}
+
 export default function MapCanvas({
   imageSrc,
   imageWidth,
   imageHeight,
-  journeys,
-  eventNames,
+  tracks,
+  markers,
+  clock,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const baseRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const transformRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const fitScaleRef = useRef(1);
   const lastPointerRef = useRef({ x: 0, y: 0 });
+  const stackCacheRef = useRef<StackCache | null>(null);
 
   const [imageReady, setImageReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [hovered, setHovered] = useState<HoveredGroup | null>(null);
-  const [prevJourneys, setPrevJourneys] = useState(journeys);
+  const [prevTracks, setPrevTracks] = useState(tracks);
 
-  if (journeys !== prevJourneys) {
-    setPrevJourneys(journeys);
+  if (tracks !== prevTracks) {
+    setPrevTracks(tracks);
     setHovered(null);
   }
 
-  const sortedMarkers = useMemo(() => {
-    const all = journeys.flatMap((j) => buildJourneyMarkers(j, eventNames, imageWidth, imageHeight));
-    return sortByPriority(all);
-  }, [journeys, eventNames, imageWidth, imageHeight]);
+  const botTracks = useMemo(() => tracks.filter((t) => t.journey.kind === "bot"), [tracks]);
+  const humanTracks = useMemo(() => tracks.filter((t) => t.journey.kind === "human"), [tracks]);
 
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
+  const drawBase = useCallback(() => {
     const img = imageRef.current;
-    if (!canvas || !img) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const cssW = canvas.clientWidth;
-    const cssH = canvas.clientHeight;
-    const dpr = window.devicePixelRatio || 1;
-    const targetW = Math.round(cssW * dpr);
-    const targetH = Math.round(cssH * dpr);
-    if (canvas.width !== targetW || canvas.height !== targetH) {
-      canvas.width = targetW;
-      canvas.height = targetH;
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-
+    const prepared = prepareCanvas(baseRef.current);
+    if (!img || !prepared) return;
+    const { ctx } = prepared;
     const { scale, tx, ty } = transformRef.current;
     ctx.save();
     ctx.translate(tx, ty);
     ctx.scale(scale, scale);
     ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
+    ctx.restore();
+  }, [imageWidth, imageHeight]);
 
-    const bots = journeys.filter((j) => j.kind === "bot");
-    const humans = journeys.filter((j) => j.kind === "human");
+  const drawOverlay = useCallback(() => {
+    if (!imageRef.current) return;
+    const prepared = prepareCanvas(overlayRef.current);
+    if (!prepared) return;
+    const { ctx } = prepared;
+    const time = clock.getTime();
+    const { scale, tx, ty } = transformRef.current;
 
-    const drawPath = (journey: Journey, strokeStyle: string, lineWidth: number, dash: number[]) => {
-      if (journey.points.length < 2) return;
-      ctx.beginPath();
-      journey.points.forEach((pt, i) => {
-        const x = pt.u * imageWidth;
-        const y = (1 - pt.v) * imageHeight;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.strokeStyle = strokeStyle;
-      ctx.lineWidth = lineWidth / scale;
-      ctx.setLineDash(dash.map((d) => d / scale));
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.scale(scale, scale);
+
+    ctx.strokeStyle = "rgba(148,163,184,0.6)";
+    ctx.lineWidth = 1.4 / scale;
+    ctx.setLineDash([5 / scale, 4 / scale]);
+    botTracks.forEach((track) => {
+      if (!hasStarted(track, time)) return;
+      tracePath(ctx, track, time);
       ctx.stroke();
-      ctx.setLineDash([]);
-    };
+    });
 
-    bots.forEach((j) => drawPath(j, "rgba(148,163,184,0.55)", 1.4, [5, 4]));
-    humans.forEach((j) => drawPath(j, "rgba(37,99,235,0.9)", 2, []));
+    ctx.strokeStyle = "rgba(37,99,235,0.9)";
+    ctx.lineWidth = 2 / scale;
+    ctx.setLineDash([]);
+    humanTracks.forEach((track) => {
+      if (!hasStarted(track, time)) return;
+      tracePath(ctx, track, time);
+      ctx.stroke();
+    });
 
-    sortedMarkers.forEach((m) => {
+    botTracks.forEach((track) => {
+      const pos = positionAt(track, time);
+      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "bot", DOT_SIZE_PX / scale);
+    });
+    humanTracks.forEach((track) => {
+      const pos = positionAt(track, time);
+      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "human", DOT_SIZE_PX / scale);
+    });
+
+    const visible: MarkerInfo[] = [];
+    for (const m of markers) {
+      if (m.t <= time) visible.push(m);
+    }
+    visible.forEach((m) => {
       ctx.globalAlpha = m.alpha;
       drawMarker(ctx, m.x, m.y, m.shape, m.color, m.size / scale);
     });
     ctx.globalAlpha = 1;
 
-    const stackTops = findStackedTopMarkers(sortedMarkers, STACK_RING_RADIUS_PX / scale);
-    stackTops.forEach((idx) => {
-      const m = sortedMarkers[idx];
+    let cache = stackCacheRef.current;
+    if (!cache || cache.markers !== markers || cache.scale !== scale || cache.count !== visible.length) {
+      cache = {
+        markers,
+        scale,
+        count: visible.length,
+        tops: findStackedTopMarkers(visible, STACK_RING_RADIUS_PX / scale),
+      };
+      stackCacheRef.current = cache;
+    }
+    cache.tops.forEach((idx) => {
+      const m = visible[idx];
       ctx.beginPath();
       ctx.arc(m.x, m.y, (m.size / scale) * 1.7, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255,255,255,0.95)";
@@ -146,7 +193,12 @@ export default function MapCanvas({
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-  }, [imageWidth, imageHeight, journeys, sortedMarkers, hovered]);
+  }, [clock, botTracks, humanTracks, markers, hovered]);
+
+  const drawAll = useCallback(() => {
+    drawBase();
+    drawOverlay();
+  }, [drawBase, drawOverlay]);
 
   const fitToContainer = useCallback(() => {
     const container = containerRef.current;
@@ -178,28 +230,35 @@ export default function MapCanvas({
   useEffect(() => {
     if (!imageReady) return;
     fitToContainer();
-    draw();
-  }, [imageReady, fitToContainer, draw]);
+  }, [imageReady, fitToContainer]);
 
   useEffect(() => {
-    draw();
-  }, [draw]);
+    drawBase();
+  }, [drawBase, imageReady]);
+
+  useEffect(() => {
+    drawOverlay();
+  }, [drawOverlay, imageReady]);
+
+  useEffect(() => clock.subscribe(drawOverlay), [clock, drawOverlay]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const observer = new ResizeObserver(() => {
-      draw();
+      drawAll();
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [draw]);
+  }, [drawAll]);
 
   const findHoveredMarkers = useCallback(
     (mouseX: number, mouseY: number): HoveredGroup | null => {
       const { scale, tx, ty } = transformRef.current;
-      const within: { label: string; t: number; playerId: string; kind: "human" | "bot"; flag: boolean; sx: number; sy: number; dist: number; rank: number }[] = [];
-      for (const m of sortedMarkers) {
+      const time = clock.getTime();
+      const within: (HoveredItem & { sx: number; sy: number; dist: number; rank: number })[] = [];
+      for (const m of markers) {
+        if (m.t > time) continue;
         const sx = tx + m.x * scale;
         const sy = ty + m.y * scale;
         const dist = Math.hypot(sx - mouseX, sy - mouseY);
@@ -226,13 +285,13 @@ export default function MapCanvas({
         items: within.map(({ label, t, playerId, kind, flag }) => ({ label, t, playerId, kind, flag })),
       };
     },
-    [sortedMarkers],
+    [markers, clock],
   );
 
   const onWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault();
-      const canvas = canvasRef.current;
+      const canvas = overlayRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -244,16 +303,14 @@ export default function MapCanvas({
       const newScale = Math.min(maxScale, Math.max(minScale, scale * zoomFactor));
       const mapX = (mouseX - tx) / scale;
       const mapY = (mouseY - ty) / scale;
-      const newTx = mouseX - mapX * newScale;
-      const newTy = mouseY - mapY * newScale;
-      transformRef.current = { scale: newScale, tx: newTx, ty: newTy };
-      draw();
+      transformRef.current = { scale: newScale, tx: mouseX - mapX * newScale, ty: mouseY - mapY * newScale };
+      drawAll();
     },
-    [draw],
+    [drawAll],
   );
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = overlayRef.current;
     if (!canvas) return;
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -276,16 +333,14 @@ export default function MapCanvas({
         ty: transformRef.current.ty + dy,
       };
       if (hovered) setHovered(null);
-      draw();
+      drawAll();
       return;
     }
 
-    const canvas = canvasRef.current;
+    const canvas = overlayRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const found = findHoveredMarkers(mouseX, mouseY);
+    const found = findHoveredMarkers(e.clientX - rect.left, e.clientY - rect.top);
     if (groupKey(found) !== groupKey(hovered)) {
       setHovered(found);
     }
@@ -302,9 +357,10 @@ export default function MapCanvas({
 
   return (
     <div ref={containerRef} className="absolute inset-0">
+      <canvas ref={baseRef} className="absolute inset-0 w-full h-full block" />
       <canvas
-        ref={canvasRef}
-        className="w-full h-full block"
+        ref={overlayRef}
+        className="absolute inset-0 w-full h-full block"
         style={{ cursor: isDragging ? "grabbing" : "grab" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { EVENT_STYLES, MarkerShape, drawMarker } from "@/lib/eventStyles";
 import { EXTRACTED_MARKER_STYLE, START_MARKER_STYLE } from "@/lib/markers";
+import { drawPlayerDot } from "@/lib/playback";
 
 function MarkerSwatch({ shape, color }: { shape: MarkerShape; color: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -48,6 +49,25 @@ function LineSwatch({ dashed }: { dashed: boolean }) {
   return <canvas ref={ref} className="w-[28px] h-[12px] shrink-0" style={{ width: 28, height: 12 }} />;
 }
 
+function DotSwatch({ kind }: { kind: "human" | "bot" }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 28 * dpr;
+    canvas.height = 14 * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, 28, 14);
+    drawPlayerDot(ctx, 14, 7, kind, 5.5);
+  }, [kind]);
+
+  return <canvas ref={ref} className="w-[28px] h-[14px] shrink-0" style={{ width: 28, height: 14 }} />;
+}
+
 export default function Legend() {
   const [open, setOpen] = useState(true);
   const markerEntries = Object.entries(EVENT_STYLES) as [string, (typeof EVENT_STYLES)[keyof typeof EVENT_STYLES]][];
@@ -71,6 +91,14 @@ export default function Legend() {
             <div className="flex items-center gap-2">
               <LineSwatch dashed={true} />
               <span>Bot path</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <DotSwatch kind="human" />
+              <span>Human position now</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <DotSwatch kind="bot" />
+              <span>Bot position now</span>
             </div>
             <div className="flex items-center gap-2">
               <MarkerSwatch shape={START_MARKER_STYLE.shape} color={START_MARKER_STYLE.color} />

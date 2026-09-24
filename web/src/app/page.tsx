@@ -5,7 +5,7 @@ import { IndexData, Journey, MapData } from "@/lib/types";
 import { loadIndex, loadMapData } from "@/lib/loadData";
 import { buildJourneysByMatch, buildMatchSummaries, pickDefaultMatch } from "@/lib/journeys";
 import Sidebar from "@/components/Sidebar";
-import MapCanvas from "@/components/MapCanvas";
+import MatchPlayer from "@/components/MatchPlayer";
 
 export default function Home() {
   const [index, setIndex] = useState<IndexData | null>(null);
@@ -93,16 +93,13 @@ export default function Home() {
           selectedMatchIndex={selectedMatchIndex}
           onSelectMatch={setSelectedMatchIndex}
         />
-        <main className="relative flex-1 min-w-0 bg-zinc-900">
-          <MapCanvas
-            key={mapMeta.id}
-            imageSrc={mapMeta.image}
-            imageWidth={mapMeta.width}
-            imageHeight={mapMeta.height}
-            journeys={currentJourneys}
-            eventNames={index.events}
-          />
-        </main>
+        <MatchPlayer
+          mapMeta={mapMeta}
+          journeys={currentJourneys}
+          eventNames={index.events}
+          matchKey={`${mapMeta.id}:${selectedMatchIndex}`}
+          matchDuration={mapData.matches[selectedMatchIndex].duration}
+        />
       </div>
     </div>
   );
