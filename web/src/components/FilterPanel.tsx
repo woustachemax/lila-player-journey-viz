@@ -201,7 +201,9 @@ export default function FilterPanel({
           ))}
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          Always covers every match for the chosen date (or all dates), regardless of the view above.
+          Covers every match for the current date (or all dates), regardless of the view above. Kills and
+          deaths only ever come from human journeys, so those two layers follow the Humans toggle; traffic
+          follows both toggles.
         </p>
 
         {heatmap.layer !== "off" && (

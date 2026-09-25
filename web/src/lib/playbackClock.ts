@@ -65,9 +65,10 @@ export class PlaybackClock {
   }
 
   restart() {
-    this.pause();
+    cancelAnimationFrame(this.rafId);
+    this.playing = false;
     this.time = 0;
-    this.play();
+    this.emit();
   }
 
   seek(time: number) {

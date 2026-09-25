@@ -10,9 +10,10 @@ interface SidebarProps {
   onSelectMap: (mapId: string) => void;
   matches: MatchMeta[];
   summaries: Map<number, MatchSummary>;
-  selectedMatchIndex: number;
+  selectedMatchIndex: number | null;
   onSelectMatch: (index: number) => void;
   dateFilter: string | null;
+  mapMatchCounts: Record<string, number>;
 }
 
 export default function Sidebar({
@@ -24,10 +25,11 @@ export default function Sidebar({
   selectedMatchIndex,
   onSelectMatch,
   dateFilter,
+  mapMatchCounts,
 }: SidebarProps) {
   return (
     <aside className="flex flex-col w-72 shrink-0 border-r border-zinc-800 bg-zinc-950 min-h-0">
-      <MapSelector maps={maps} selectedMapId={selectedMapId} onSelect={onSelectMap} />
+      <MapSelector maps={maps} selectedMapId={selectedMapId} onSelect={onSelectMap} matchCounts={mapMatchCounts} />
       <MatchList
         matches={matches}
         summaries={summaries}

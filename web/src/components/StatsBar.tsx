@@ -9,8 +9,19 @@ function plural(count: number, one: string, many: string): string {
   return `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 }
 
+function journeysLabel(counts: FilteredCounts): string {
+  if (counts.humansIncluded && counts.botsIncluded) {
+    return `${counts.journeys.toLocaleString("en-US")} journeys (${counts.humanJourneys.toLocaleString(
+      "en-US",
+    )} human, ${counts.botJourneys.toLocaleString("en-US")} bot)`;
+  }
+  if (counts.humansIncluded) return plural(counts.humanJourneys, "human journey", "human journeys");
+  if (counts.botsIncluded) return plural(counts.botJourneys, "bot journey", "bot journeys");
+  return "0 journeys";
+}
+
 export default function StatsBar({ scopeLabel, counts }: StatsBarProps) {
-  const parts: string[] = [plural(counts.journeys, "journey", "journeys")];
+  const parts: string[] = [journeysLabel(counts)];
   if (counts.kills !== null) parts.push(plural(counts.kills, "kill", "kills"));
   if (counts.deaths !== null) parts.push(plural(counts.deaths, "death", "deaths"));
   if (counts.loot !== null) parts.push(plural(counts.loot, "loot pickup", "loot pickups"));

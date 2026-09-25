@@ -22,6 +22,7 @@ export default function Home() {
   const [selectedMatchIndex, setSelectedMatchIndex] = useState<number | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [heatmap, setHeatmap] = useState<HeatmapSettings>(DEFAULT_HEATMAP_SETTINGS);
+  const [mapDataCache, setMapDataCache] = useState<Map<string, MapData>>(new Map());
   const [error, setError] = useState<string | null>(null);
 
   const heatmapCacheRef = useRef(new Map<string, HeatmapGrid>());
@@ -47,6 +48,7 @@ export default function Home() {
         setJourneysByMatch(buildJourneysByMatch(data));
         setSelectedMatchIndex(pickDefaultMatch(data.matches));
         heatmapCacheRef.current = new Map();
+        setMapDataCache((prev) => (prev.has(data.map) ? prev : new Map(prev).set(data.map, data)));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -55,6 +57,22 @@ export default function Home() {
       cancelled = true;
     };
   }, [index, selectedMapId]);
+
+  useEffect(() => {
+    if (!index) return;
+    let cancelled = false;
+    index.maps.forEach((meta) => {
+      loadMapData(meta.data)
+        .then((data) => {
+          if (cancelled) return;
+          setMapDataCache((prev) => (prev.has(data.map) ? prev : new Map(prev).set(data.map, data)));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [index]);
 
   const mapMeta = useMemo(
     () => index?.maps.find((m) => m.id === selectedMapId) ?? null,
@@ -141,11 +159,34 @@ export default function Home() {
   }, [scope.journeys, index, mapMeta, filters]);
 
   const counts = useMemo(() => {
-    if (!scene) return { journeys: 0, kills: null, deaths: null, loot: null };
+    if (!scene) {
+      return {
+        journeys: 0,
+        humanJourneys: 0,
+        botJourneys: 0,
+        humansIncluded: filters.humans,
+        botsIncluded: filters.bots,
+        kills: null,
+        deaths: null,
+        loot: null,
+      };
+    }
     const humanCount = scope.journeys.filter((j) => j.kind === "human").length;
     const botCount = scope.journeys.filter((j) => j.kind === "bot").length;
     return countVisible(humanCount, botCount, scene.visibleMarkers, filters);
   }, [scene, scope.journeys, filters]);
+
+  const mapMatchCounts = useMemo(() => {
+    if (!index) return {};
+    const counts: Record<string, number> = {};
+    index.maps.forEach((m) => {
+      const cached = mapDataCache.get(m.id);
+      counts[m.id] = cached
+        ? cached.matches.filter((match) => matchInDate(match, filters.date)).length
+        : m.matches;
+    });
+    return counts;
+  }, [index, mapDataCache, filters.date]);
 
   const heatmapJourneys = useMemo(
     () => dateScopedJourneys.filter((j) => (j.kind === "human" ? filters.humans : filters.bots)),
@@ -198,9 +239,10 @@ export default function Home() {
           onSelectMap={setSelectedMapId}
           matches={mapData.matches}
           summaries={matchSummaries}
-          selectedMatchIndex={selectedMatchIndex}
+          selectedMatchIndex={filters.aggregate ? null : selectedMatchIndex}
           onSelectMatch={handleSelectMatch}
           dateFilter={filters.date}
+          mapMatchCounts={mapMatchCounts}
         />
         <MatchPlayer
           mapMeta={mapMeta}

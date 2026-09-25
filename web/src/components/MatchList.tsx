@@ -7,7 +7,7 @@ import { formatDate, formatDurationLong, formatMatchSummary } from "@/lib/format
 interface MatchListProps {
   matches: MatchMeta[];
   summaries: Map<number, MatchSummary>;
-  selectedIndex: number;
+  selectedIndex: number | null;
   onSelect: (index: number) => void;
   dateFilter: string | null;
 }
@@ -46,6 +46,7 @@ export default function MatchList({ matches, summaries, selectedIndex, onSelect,
   }, [matches, summaries, sortMode, dateFilter]);
 
   useEffect(() => {
+    if (selectedIndex === null) return;
     selectedRef.current?.scrollIntoView({ block: "center" });
   }, [orderedIndices, selectedIndex]);
 
@@ -68,7 +69,7 @@ export default function MatchList({ matches, summaries, selectedIndex, onSelect,
       )}
       {orderedIndices.map((index) => {
         const match = matches[index];
-        const active = index === selectedIndex;
+        const active = selectedIndex !== null && index === selectedIndex;
         return (
           <button
             key={match.id}

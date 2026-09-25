@@ -71,6 +71,10 @@ export function filterMarkers(markers: MarkerInfo[], filters: Filters): MarkerIn
 
 export interface FilteredCounts {
   journeys: number;
+  humanJourneys: number;
+  botJourneys: number;
+  humansIncluded: boolean;
+  botsIncluded: boolean;
   kills: number | null;
   deaths: number | null;
   loot: number | null;
@@ -93,8 +97,14 @@ export function countVisible(
     else if (DEATH_KINDS.includes(m.markerKind)) deaths++;
   });
   const e = filters.events;
+  const includedHumanJourneys = filters.humans ? humanJourneys : 0;
+  const includedBotJourneys = filters.bots ? botJourneys : 0;
   return {
-    journeys: (filters.humans ? humanJourneys : 0) + (filters.bots ? botJourneys : 0),
+    journeys: includedHumanJourneys + includedBotJourneys,
+    humanJourneys: includedHumanJourneys,
+    botJourneys: includedBotJourneys,
+    humansIncluded: filters.humans,
+    botsIncluded: filters.bots,
     kills: e.botKill || e.playerKill ? kills : null,
     deaths: e.killedByBot || e.killedByPlayer || e.stormDeath ? deaths : null,
     loot: e.loot ? loot : null,

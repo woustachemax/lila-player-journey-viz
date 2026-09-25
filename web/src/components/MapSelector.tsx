@@ -4,9 +4,10 @@ interface MapSelectorProps {
   maps: MapMeta[];
   selectedMapId: string;
   onSelect: (mapId: string) => void;
+  matchCounts: Record<string, number>;
 }
 
-export default function MapSelector({ maps, selectedMapId, onSelect }: MapSelectorProps) {
+export default function MapSelector({ maps, selectedMapId, onSelect, matchCounts }: MapSelectorProps) {
   return (
     <div className="flex flex-col gap-1 p-3 border-b border-zinc-800">
       <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 px-1 mb-1">
@@ -27,7 +28,7 @@ export default function MapSelector({ maps, selectedMapId, onSelect }: MapSelect
             >
               <span className="font-medium">{map.label}</span>
               <span className={`text-xs ${active ? "text-blue-100" : "text-zinc-500"}`}>
-                {map.matches} matches
+                {matchCounts[map.id] ?? map.matches} matches
               </span>
             </button>
           );
