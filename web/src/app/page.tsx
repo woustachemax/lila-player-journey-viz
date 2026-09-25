@@ -26,6 +26,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const heatmapCacheRef = useRef(new Map<string, HeatmapGrid>());
+  const filtersDateRef = useRef(filters.date);
+  filtersDateRef.current = filters.date;
 
   useEffect(() => {
     loadIndex()
@@ -46,7 +48,7 @@ export default function Home() {
         if (cancelled) return;
         setMapData(data);
         setJourneysByMatch(buildJourneysByMatch(data));
-        setSelectedMatchIndex(pickDefaultMatch(data.matches));
+        setSelectedMatchIndex(pickDefaultMatch(data.matches, filtersDateRef.current));
         heatmapCacheRef.current = new Map();
         setMapDataCache((prev) => (prev.has(data.map) ? prev : new Map(prev).set(data.map, data)));
       })

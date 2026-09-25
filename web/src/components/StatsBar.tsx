@@ -11,9 +11,9 @@ function plural(count: number, one: string, many: string): string {
 
 function journeysLabel(counts: FilteredCounts): string {
   if (counts.humansIncluded && counts.botsIncluded) {
-    return `${counts.journeys.toLocaleString("en-US")} journeys (${counts.humanJourneys.toLocaleString(
-      "en-US",
-    )} human, ${counts.botJourneys.toLocaleString("en-US")} bot)`;
+    const human = plural(counts.humanJourneys, "human", "humans");
+    const bot = plural(counts.botJourneys, "bot", "bots");
+    return `${plural(counts.journeys, "journey", "journeys")} (${human}, ${bot})`;
   }
   if (counts.humansIncluded) return plural(counts.humanJourneys, "human journey", "human journeys");
   if (counts.botsIncluded) return plural(counts.botJourneys, "bot journey", "bot journeys");

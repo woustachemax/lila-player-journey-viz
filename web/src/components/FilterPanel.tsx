@@ -36,6 +36,12 @@ const PEAK_UNIT: Record<HeatmapLayer, string> = {
   deaths: "deaths",
 };
 
+function heatmapZeroReason(layer: HeatmapLayer, humans: boolean, bots: boolean): string | null {
+  if ((layer === "kills" || layer === "deaths") && !humans) return "Humans is off";
+  if (layer === "traffic" && !humans && !bots) return "Humans and Bots are off";
+  return null;
+}
+
 export default function FilterPanel({
   dates,
   matches,
@@ -54,6 +60,9 @@ export default function FilterPanel({
   const toggleEvent = (key: EventToggleKey) => {
     onChange({ ...filters, events: { ...filters.events, [key]: !filters.events[key] } });
   };
+
+  const peakZeroReason =
+    (heatmapGrid?.max ?? 0) === 0 ? heatmapZeroReason(heatmap.layer, filters.humans, filters.bots) : null;
 
   return (
     <aside className="flex w-64 shrink-0 flex-col gap-5 overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-4 text-sm">
@@ -257,6 +266,7 @@ export default function FilterPanel({
               </div>
               <p className="mt-1.5 text-xs text-zinc-300">
                 Peak cell: {(heatmapGrid?.max ?? 0).toLocaleString("en-US")} {PEAK_UNIT[heatmap.layer]}
+                {peakZeroReason && ` (${peakZeroReason})`}
               </p>
             </div>
           </div>
