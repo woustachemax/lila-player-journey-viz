@@ -12,6 +12,7 @@ interface SidebarProps {
   summaries: Map<number, MatchSummary>;
   selectedMatchIndex: number;
   onSelectMatch: (index: number) => void;
+  dateFilter: string | null;
 }
 
 export default function Sidebar({
@@ -22,6 +23,7 @@ export default function Sidebar({
   summaries,
   selectedMatchIndex,
   onSelectMatch,
+  dateFilter,
 }: SidebarProps) {
   return (
     <aside className="flex flex-col w-72 shrink-0 border-r border-zinc-800 bg-zinc-950 min-h-0">
@@ -31,6 +33,7 @@ export default function Sidebar({
         summaries={summaries}
         selectedIndex={selectedMatchIndex}
         onSelect={onSelectMatch}
+        dateFilter={dateFilter}
       />
       <Legend />
     </aside>

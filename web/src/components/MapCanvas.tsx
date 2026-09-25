@@ -5,6 +5,7 @@ import { drawMarker } from "@/lib/eventStyles";
 import { MarkerInfo, findStackedTopMarkers, markerPriorityRank } from "@/lib/markers";
 import { PlaybackClock } from "@/lib/playbackClock";
 import { Track, drawPlayerDot, hasStarted, positionAt, tracePath } from "@/lib/playback";
+import { HeatmapGrid, heatColor } from "@/lib/heatmap";
 import { formatDuration } from "@/lib/format";
 import Tooltip from "./Tooltip";
 
@@ -15,6 +16,34 @@ interface MapCanvasProps {
   tracks: Track[];
   markers: MarkerInfo[];
   clock: PlaybackClock;
+  aggregate: boolean;
+  heatmap: HeatmapGrid | null;
+  heatmapOpacity: number;
+}
+
+const PATH_STYLE = {
+  bot: { stroke: "rgba(148,163,184,0.55)", width: 1.4, dash: [5, 4] },
+  human: { stroke: "rgba(37,99,235,0.9)", width: 2, dash: [] as number[] },
+  botAggregate: { stroke: "rgba(148,163,184,0.22)", width: 1, dash: [3, 3] },
+  humanAggregate: { stroke: "rgba(37,99,235,0.2)", width: 1, dash: [] as number[] },
+};
+
+function buildHeatmapCanvas(heatmap: HeatmapGrid): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = heatmap.resolution;
+  canvas.height = heatmap.resolution;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(heatmap.resolution, heatmap.resolution);
+  for (let i = 0; i < heatmap.counts.length; i++) {
+    const t = heatmap.max > 0 ? Math.sqrt(heatmap.counts[i] / heatmap.max) : 0;
+    const [r, g, b, a] = heatColor(t);
+    img.data[i * 4] = r;
+    img.data[i * 4 + 1] = g;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = a;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 interface Transform {
@@ -80,6 +109,9 @@ export default function MapCanvas({
   tracks,
   markers,
   clock,
+  aggregate,
+  heatmap,
+  heatmapOpacity,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
@@ -103,6 +135,8 @@ export default function MapCanvas({
   const botTracks = useMemo(() => tracks.filter((t) => t.journey.kind === "bot"), [tracks]);
   const humanTracks = useMemo(() => tracks.filter((t) => t.journey.kind === "human"), [tracks]);
 
+  const heatmapCanvas = useMemo(() => (heatmap ? buildHeatmapCanvas(heatmap) : null), [heatmap]);
+
   const drawBase = useCallback(() => {
     const img = imageRef.current;
     const prepared = prepareCanvas(baseRef.current);
@@ -113,8 +147,14 @@ export default function MapCanvas({
     ctx.translate(tx, ty);
     ctx.scale(scale, scale);
     ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
+    if (heatmapCanvas) {
+      ctx.globalAlpha = heatmapOpacity;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(heatmapCanvas, 0, 0, imageWidth, imageHeight);
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
-  }, [imageWidth, imageHeight]);
+  }, [imageWidth, imageHeight, heatmapCanvas, heatmapOpacity]);
 
   const drawOverlay = useCallback(() => {
     if (!imageRef.current) return;
@@ -128,32 +168,39 @@ export default function MapCanvas({
     ctx.translate(tx, ty);
     ctx.scale(scale, scale);
 
-    ctx.strokeStyle = "rgba(148,163,184,0.6)";
-    ctx.lineWidth = 1.4 / scale;
-    ctx.setLineDash([5 / scale, 4 / scale]);
+    const botStyle = aggregate ? PATH_STYLE.botAggregate : PATH_STYLE.bot;
+    const humanStyle = aggregate ? PATH_STYLE.humanAggregate : PATH_STYLE.human;
+
+    ctx.strokeStyle = botStyle.stroke;
+    ctx.lineWidth = botStyle.width / scale;
+    ctx.setLineDash(botStyle.dash.map((d) => d / scale));
     botTracks.forEach((track) => {
       if (!hasStarted(track, time)) return;
       tracePath(ctx, track, time);
       ctx.stroke();
     });
 
-    ctx.strokeStyle = "rgba(37,99,235,0.9)";
-    ctx.lineWidth = 2 / scale;
+    ctx.strokeStyle = humanStyle.stroke;
+    ctx.lineWidth = humanStyle.width / scale;
+    ctx.setLineDash(humanStyle.dash.map((d) => d / scale));
+    humanTracks.forEach((track) => {
+      if (!hasStarted(track, time)) return;
+      tracePath(ctx, track, time);
+      ctx.stroke();
+    });
     ctx.setLineDash([]);
-    humanTracks.forEach((track) => {
-      if (!hasStarted(track, time)) return;
-      tracePath(ctx, track, time);
-      ctx.stroke();
-    });
 
+    ctx.globalAlpha = aggregate ? 0.55 : 1;
+    const dotSize = (aggregate ? DOT_SIZE_PX * 0.7 : DOT_SIZE_PX) / scale;
     botTracks.forEach((track) => {
       const pos = positionAt(track, time);
-      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "bot", DOT_SIZE_PX / scale);
+      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "bot", dotSize);
     });
     humanTracks.forEach((track) => {
       const pos = positionAt(track, time);
-      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "human", DOT_SIZE_PX / scale);
+      if (pos) drawPlayerDot(ctx, pos.x, pos.y, "human", dotSize);
     });
+    ctx.globalAlpha = 1;
 
     const visible: MarkerInfo[] = [];
     for (const m of markers) {
@@ -193,7 +240,7 @@ export default function MapCanvas({
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-  }, [clock, botTracks, humanTracks, markers, hovered]);
+  }, [clock, botTracks, humanTracks, markers, hovered, aggregate]);
 
   const drawAll = useCallback(() => {
     drawBase();

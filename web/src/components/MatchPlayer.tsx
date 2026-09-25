@@ -1,19 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { EventName, Journey, MapMeta } from "@/lib/types";
-import { buildJourneyMarkers, sortByPriority } from "@/lib/markers";
-import { buildTracks, maxJourneyTime } from "@/lib/playback";
+import { MapMeta } from "@/lib/types";
+import { MarkerInfo } from "@/lib/markers";
+import { Track } from "@/lib/playback";
+import { HeatmapGrid } from "@/lib/heatmap";
 import { DEFAULT_PLAYBACK_SPEED, PlaybackClock, PlaybackSpeed } from "@/lib/playbackClock";
 import MapCanvas from "./MapCanvas";
 import Timeline from "./Timeline";
 
 interface MatchPlayerProps {
   mapMeta: MapMeta;
-  journeys: Journey[];
-  eventNames: EventName[];
-  matchKey: string;
-  matchDuration: number;
+  tracks: Track[];
+  markers: MarkerInfo[];
+  duration: number;
+  playerKey: string;
+  aggregate: boolean;
+  heatmap: HeatmapGrid | null;
+  heatmapOpacity: number;
 }
 
 const STEP_SECONDS = 5;
@@ -25,31 +29,17 @@ function isTextEntry(target: EventTarget | null): boolean {
 
 export default function MatchPlayer({
   mapMeta,
-  journeys,
-  eventNames,
-  matchKey,
-  matchDuration,
+  tracks,
+  markers,
+  duration,
+  playerKey,
+  aggregate,
+  heatmap,
+  heatmapOpacity,
 }: MatchPlayerProps) {
   const [speed, setSpeed] = useState<PlaybackSpeed>(DEFAULT_PLAYBACK_SPEED);
 
-  const duration = useMemo(
-    () => Math.max(matchDuration, maxJourneyTime(journeys)),
-    [matchDuration, journeys],
-  );
-
-  const clock = useMemo(() => new PlaybackClock(matchKey, duration), [matchKey, duration]);
-
-  const tracks = useMemo(
-    () => buildTracks(journeys, eventNames, mapMeta.width, mapMeta.height),
-    [journeys, eventNames, mapMeta.width, mapMeta.height],
-  );
-
-  const markers = useMemo(() => {
-    const all = journeys.flatMap((j) =>
-      buildJourneyMarkers(j, eventNames, mapMeta.width, mapMeta.height),
-    );
-    return sortByPriority(all);
-  }, [journeys, eventNames, mapMeta.width, mapMeta.height]);
+  const clock = useMemo(() => new PlaybackClock(playerKey, duration), [playerKey, duration]);
 
   useEffect(() => {
     clock.setSpeed(speed);
@@ -93,6 +83,9 @@ export default function MatchPlayer({
           tracks={tracks}
           markers={markers}
           clock={clock}
+          aggregate={aggregate}
+          heatmap={heatmap}
+          heatmapOpacity={heatmapOpacity}
         />
       </div>
       <Timeline clock={clock} markers={markers} speed={speed} onSpeedChange={setSpeed} />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MatchMeta } from "@/lib/types";
 import { MatchSummary } from "@/lib/journeys";
+import { matchInDate } from "@/lib/filters";
 import { formatDate, formatDurationLong, formatMatchSummary } from "@/lib/format";
 
 interface MatchListProps {
@@ -8,6 +9,7 @@ interface MatchListProps {
   summaries: Map<number, MatchSummary>;
   selectedIndex: number;
   onSelect: (index: number) => void;
+  dateFilter: string | null;
 }
 
 type SortMode = "newest" | "mostEvents" | "mostBots";
@@ -24,12 +26,15 @@ function totalEvents(summary: MatchSummary | undefined): number {
   );
 }
 
-export default function MatchList({ matches, summaries, selectedIndex, onSelect }: MatchListProps) {
+export default function MatchList({ matches, summaries, selectedIndex, onSelect, dateFilter }: MatchListProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
   const [sortMode, setSortMode] = useState<SortMode>("newest");
 
   const orderedIndices = useMemo(() => {
-    const indices = matches.map((_, i) => i);
+    const indices: number[] = [];
+    matches.forEach((m, i) => {
+      if (matchInDate(m, dateFilter)) indices.push(i);
+    });
     if (sortMode === "newest") {
       indices.sort((a, b) => matches[b].start - matches[a].start);
     } else if (sortMode === "mostEvents") {
@@ -38,7 +43,7 @@ export default function MatchList({ matches, summaries, selectedIndex, onSelect 
       indices.sort((a, b) => matches[b].bots - matches[a].bots);
     }
     return indices;
-  }, [matches, summaries, sortMode]);
+  }, [matches, summaries, sortMode, dateFilter]);
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "center" });
@@ -58,6 +63,9 @@ export default function MatchList({ matches, summaries, selectedIndex, onSelect 
           <option value="mostBots">Most bots</option>
         </select>
       </div>
+      {orderedIndices.length === 0 && (
+        <p className="px-1 py-2 text-xs text-zinc-500">No matches on this date.</p>
+      )}
       {orderedIndices.map((index) => {
         const match = matches[index];
         const active = index === selectedIndex;
